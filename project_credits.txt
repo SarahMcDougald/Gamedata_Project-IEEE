@@ -1,0 +1,47 @@
+
+This is a list of credit and thanks I would like to give to sources that aided
+me in this project.
+
+
+~ Data ~
+
+IGN SCORES DATASET
+
+Dataset credits go to user CDanger on Reddit, who collected the IGN Scores 
+Data and made it publicly available. Reddit link:
+https://www.reddit.com/r/datasets/comments/2awdgx/i_made_this_dataset_of_all_of_igns_game_reviews/
+Dropbox link for the data
+https://www.dropbox.com/s/09sh15zbtwg9eu3/gamedata.xlsx
+
+WIKIPEDIA DATA
+
+I scraped the Wikipedia data from pages that were compiled by volunteers at
+Wikipedia.com. The following are a list of pages I scraped from, each with a
+list of the names of the data tables scraped.
+
+...
+
+
+~ Special Thanks ~
+
+I frequently used the famous statistical learning primer, the Introduction to
+Statistical Learning with Applications in R (ISLR). I used the ___third___
+edition. This is an incredible book, and is invaluable for anyone trying to 
+use statistical learning or machine learning methods.
+
+Link to the publicly-available first edition version:
+http://www-bcf.usc.edu/~gareth/ISL/ISLR%20First%20Printing.pdf
+
+Thanks also to the STAT 301-1 class that taught me the fundamentals of data
+science in R. In that class, we had an EDA (Exploratory Data Analysis) final
+project that was creative, independently-directed (I did my project on my own)
+and we could choose any data source to study. I used the same raw data in this
+analysis as I used from that project-- and I also used *some* of the data
+processing code. HOWEVER, the models, extended discussion, and all other
+variables scraped from Wikipedia besides the Engine variable were done outside
+of class (in addition to this in-class project being largely self-directed in
+the first place).
+
+
+
+

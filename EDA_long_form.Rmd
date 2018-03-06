@@ -1,0 +1,157 @@
+---
+title: 'IGN and Wikipedia Game Data EDA'
+output: html_document
+---
+
+### Outline
+
+1. Intro
+2. Data trimming: 2010-2014
+3. IGN score and engine
+4. Credits
+
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+# Not even sure if this is necessary. Was included in the default Rmd file.
+```
+
+<br>
+
+### Intro
+
+This EDA is centered around two datasets: the entire IGN-reviewed games dataset posted on a Reddit forum, and a tibble formed from the scraped Wikipedia data tables for three game engines: Unity, Unreal Engine and CryEngine. Links to the raw data are found here:
+<br><br>
+
+IGN dataset: https://www.reddit.com/r/datasets/comments/2awdgx/i_made_this_dataset_of_all_of_igns_game_reviews/ <br>
+Unity: https://en.wikipedia.org/wiki/List_of_Unity_games <br>
+Unreal:  https://en.wikipedia.org/wiki/List_of_Unreal_Engine_games <br>
+CryEngine: https://en.wikipedia.org/wiki/List_of_CryEngine_games <br><br>
+
+The goal with this EDA is to explore the relationship between IGN review score and game engine. The working question is: Does the IGN score of a video game differ markedly depending on what engine the game was made with? Other variables of interest include a game's genre, platform and the specific engine version used to make the game. <br><br>
+
+First, we need to load in our data and our libraries. (Note that the script with cleaned data sources the original script with the raw scraped data. See script for details.)
+
+```{r, echo=FALSE, include=FALSE}
+library(tidyverse)
+source("data/processed/data_cleaning_code.R")
+```
+
+<br><br>
+
+### Data trimming: 2010-2014
+
+Before exploring the data itself, it is worth looking at the scope of the data in its context. Usually, trimming a dataset might be a step found in the data cleaning process; however, in the context of the Wikipedia game data and the IGN data tables, it is useful to include it in EDA instead because of the implications for later data analysis: including games from certain years might confuse the results. <br><br>
+
+First: The IGN dataset was posted on a Reddit group in late 2014. This means that all of the games listed in that dataset, which is supposedly composed of the entire series of games that IGN has ever reviewed (and it's believable: the IGN data set has about 17,000 observations), are certainly from 2014 and earlier. This contrasts with the 600-observation Wikipedia data table, which includes a sizeable chunk of games made after 2014.
+
+Therefore, one may begin by filtering out these out-of-bounds observations:
+
+```{r}
+wiki_games <- cleaned_wiki_games_all %>%
+  filter(Year <= 2014)
+```
+
+Second: There is no data available for the `Engine` Unity from before 2010. Therefore, for the following sections of analysis-- comparing IGN score to engine and engine version-- it makes sense to only use data from 2010-2014.
+
+```{r}
+wiki_games_limited <- wiki_games %>%
+  filter(Year >= 2010)
+# Length of this tibble: 265 rows.
+```
+
+Finally, we can look at how the Wikipedia games data matches up with the IGN data.
+
+```{r}
+games_matches <- inner_join(cleaned_IGN, wiki_games_limited, by = "Title")
+# Length of this tibble: 247 rows. 
+```
+
+There are 247 matching games in both the IGN dataset and the Wikipedia dataset. This gives us 247 data points to work with when comparing IGN scores to game engines and engine versions.
+
+<br>
+
+## IGN score and engine
+
+We can start off a comparison of IGN score and game engine of the reviewed games by looking at the distribution for each engine. The first graph below displays the entire distribution of our games in `games_matches`:
+
+```{r}
+ggplot(games_matches, aes(x = Score)) +
+  geom_bar()
+```
+It looks like our distribution is skewed left, with a tail trailing off into a minimum rating of 2. There is a clear spike around a rating score of 8, and it appears that most of the games scored between a 5 to a 9 rating. It may be useful to look for any sub-distributions with many games scoring lower than this range.<br><br>
+
+In order to break down what the sub-distributions of games' scores by `Engine` look like, we can view them side by side in bar graphs:
+
+```{r}
+ggplot(data = games_matches, mapping = aes(x = Score)) +
+  geom_bar() + 
+  facet_wrap(~ Engine)
+
+```
+
+These graphs reveal several interesting points. For one, it is obvious that Unreal Engine has the most games reviewed by IGN of the three engines. Now, it is important to be careful in drawing conclusions from this fact, since it may just be that whoever entered game data into Wikipedia arbitrarily decided to put in a lot more data for Unreal Engine. However, several contextual pieces of information about the gaming industry may be relevant here. 
+
+<br><br>
+One is that Unity is often cited as being an Engine for amateur game developers, and that anyone serious about making games should use Unreal Engine; thus, it would make sense that we might see many more Unreal Engine games being reviewed by a large rating site like IGN because more experienced, professional developers tend to use Unreal. 
+
+<br><br>
+Another possible explanation is that there may be many fewer CryEngine games in the distribution because it is simply a less-used engine: developers must pay a fee of several hundred dollars upfront in order to use the engine, whereas anyone can download Unity and Unreal Engine and start working on a game immediately. These engines request a percentage royalty if the developer sells any copies of their game; therefore, developers might start out as hobbyists, pick one of these "free" engines, and then end up selling their game anyway.
+
+<br><br>
+Another takeaway from this graph is that CryEngine games seem to have a higher concentration in the highest score ratings: that is, ratings above 8. This may lend support to the often-heard claim among game developers that CryEngine really is a higher-quality engine, renowned for its graphics. (Or maybe IGN reviewers rate CryEngine games higher because of that perception.)
+
+<br><br>
+In order to further confirm or reject these observations, we can look at the numbers differences between the distributions, it's helpful to get a sense of the average score per distribution.
+
+```{r}
+avg_score <- mean(games_matches$Score)
+
+games_Unity <- games_matches %>%
+  filter(Engine == "Unity")
+
+games_Unreal <- games_matches %>%
+  filter(Engine == "Unreal Engine")
+
+games_CryEngine <- games_matches %>%
+  filter(Engine == "CryEngine")
+
+avg_Unity <- mean(games_Unity$Score)
+avg_Unreal <- mean(games_Unreal$Score)
+avg_CryEngine <- mean(games_CryEngine$Score)
+
+avg_score
+avg_Unity
+avg_Unreal
+avg_CryEngine
+
+
+```
+CryEngine clearly has the highest mean score, 8.17; Unreal actually sports the lowest mean score, 7.09. The overall data's average score is a 7.21-- looks like IGN likes handing out "good" reviews-- and Unity beats this distribution average at a mean of 7.65.
+
+<br><br>
+What are the implications here? It seems that these averages support the guess about CryEngine: reviewers (and a lot of fans) claim its superiority, and IGN sure seems to agree. Whether or not this means that CryEngine actually is a superior engine, or whether IGN is simply riding a wave of hype, is a question that cannot be answered with this dataset. On the other hand, these results are surprising in that Unity games had a higher average rating by roughly half a rating point. This information might surprise some fans of Unreal, who might suggest that either there is some other variable at play that would explain Unity's higher rating-- such as a higher learning curve-- or the Unity games from the Wikipedia dataset were simply handpicked to make Unity appear more favorable. Considering that this dataset does not account for the editing habits of Wikipedia contributors, this might be a plausible explanation as well.
+
+<br><br>
+Finally, we can summarize these graphs' impact on the bigger-view picture: while the average ratings of games of each engine all fall near IGN's average rating of 7.2, there are clear enough differences to suggest that game engine may play a reasonably large part in influencing a game's IGN rating.
+
+<br>
+
+## Credits
+
+I would like to thank the author at R-bloggers.com who took the time to put together this helpful article on scraping Wikipedia data tables: https://www.r-bloggers.com/using-rvest-to-scrape-an-html-table/
+<br> I adapted his code (e.g. using the `html()` function) in my `data_scraping_code.R` file.
+
+<br><br>
+I'd also like to give credit to a Princeton data consultant who made a short PowerPoint about using the function `rbind()` to append data tables or dataframes in R. There are probably plenty of other solutions to that problem in the `tidyverse`, but `rbind()` was fast, easy and got the job done. His PowerPoint: https://www.princeton.edu/~otorres/Merge101R.pdf
+
+<br><br>
+Finally: a shoutout to our professor Arend Kuyper and our TA Austin for making this an awesome class and an awesome quarter. I regret not having more time to put into this EDA project; I wanted to do more exploring of IGN score versus specific engine version, and maybe look at genre compared to IGN score, so I apologize for the lack of content. However, at least I now know a template for doing future EDAs on my own time, for fun. And now I know what to do with all those Wikipedia data tables waiting out there. THANK YOU!!!
+
+
+
+
+
+

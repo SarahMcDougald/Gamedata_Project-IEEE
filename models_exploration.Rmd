@@ -1,0 +1,410 @@
+---
+title: "Models Exploration for Three Data Sources"
+author: Sarah McDougald
+usage: IEEE Project Showcase 2018
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+<br>
+
+
+### Outline
+
+0. How to use this document
+
+1. Loading and basic data description
+
+2. Graphs 
+
+3. Models for `ign_wiki` dataset
+
+4. Models for `ign_sc` dataset
+
+5. Model comparison 
+
+6. Final model: `guess_IGN_score()` function
+
+7. Final notes
+
+<br>
+
+
+### How to use this document
+
+
+
+
+
+### Loading and basic data interpretation
+
+  
+```{r message=FALSE, warning=FALSE}
+
+# Little bit of prep work:
+
+library(tidyverse)
+library(boot) # for k-fold cross-validation
+library(GGally) # for ggpairs() when displaying
+library(MASS) # for lda() and qda()
+select <- dplyr::select
+library(class) # for knn()
+source("data/processed/data_cleaning_code.R")
+set.seed(1)
+
+
+```
+
+There are three datasets: `ign`, the IGN dataset (about 17,000 rows) on its own, `ign_wiki`, the 149-row combination of IGN and Wikipedia data, and `ign_sc`, the approximately 14,000-row combination of the IGN dataset and the Sales/Critic dataset from Kaggle.
+
+<br>
+
+### Graphs
+
+```{r}
+
+# IGN score distribution for dataset `ign` - all IGN ratings up until 2014
+
+ggplot(data = ign, aes(x = IGN_Score)) +
+  geom_bar() +
+  ggtitle("IGN Scores Distribution of `ign`")
+
+
+# IGN score distribution for dataset `ign_wiki`
+ggplot(data = ign_wiki, aes(x = IGN_Score)) +
+  geom_bar() +
+  ggtitle("IGN Scores Distribution of `ign_wiki`")
+
+# IGN score distribution for dataset `ign_sc`
+ggplot(data = ign_sc, aes(x = IGN_Score)) +
+  geom_bar() +
+  ggtitle("IGN Scores Distribution of `ign_sc`")
+
+
+# More graphs on the ign_sc data because THAT is the dataset from which the best model was chosen.
+
+# Winning model was MLM_model_5 - see below. Formula: `IGN_Score ~  NA_Sales + Rating + Platform + Genre`
+
+ggplot(ign_sc, aes(x = IGN_Score, fill = Platform)) +
+  geom_bar() +
+  ggtitle("ign_sc: IGN Scores Distribution by Platform")
+
+ggplot(ign_sc, aes(x = IGN_Score, fill = Genre)) +
+  geom_bar() +
+  ggtitle("ign_sc: IGN Scores Distribution by Genre")
+
+
+ggplot(ign_sc, aes(x = IGN_Score, fill = Rating)) +
+  geom_bar() +
+  ggtitle("ign_sc: IGN Scores Distribution by ESRB Rating")
+
+# In order to support the following plot, will pull out the outliers with more than 10 NA_Sales.
+ign_sc_trim <- ign_sc %>%
+  filter(NA_Sales < 10.0)
+NASales_IGNScore_byGenre_graph <- ggplot(ign_sc_trim, aes(x = NA_Sales, y = IGN_Score, color = Genre)) +
+  geom_point() +
+  ggtitle("ign_sc: North America Sales versus IGN Score, by Genre")
+NASales_IGNScore_byGenre_graph
+# Notice: Most of the 10.0 games are Action games.
+# Notice: If your game has sold over 5 million copies, then the odds are overwhelming that you will get a 7.5 IGN
+#    score or higher. (Of course, if your game sold that much then maybe you don't care about IGN anyway.)
+# Notice: The increase of IGN_Score as NA_Sales increases is roughly of the form sqrt(x)-- it increases more steeply
+#    at first, and then levels out.
+
+```
+
+<br>
+
+### Models for `ign_wiki` dataset
+
+```{r}
+
+##### `ign_wiki` Models
+
+
+
+### Regression Models
+
+
+#--------------------
+
+# NOTE: Will first need to clean the `ign_wiki` dataset further to remove singularities.
+
+ign_wiki <- ign_wiki %>%
+  filter(EngineVersion != "Unreal Engine 4") %>%
+  filter(EngineVersion != "Unity2010")
+
+#iw_test1 <- ign_wiki %>%
+#  filter(EngineVersion == "CryEngine 3")
+
+# Data points in each level of `EngineVersion`:
+
+  # Unreal Engine 1: 0
+  # Unreal Engine 2: 7
+  # Unreal Engine 3: 110
+  # Unreal Engine 4: 1
+  
+  # Unity2010: 2
+  # Unity2011: 4
+  # Unity2012: 7
+  # Unity2013: 12
+  
+  # CryEngine 3: 6
+
+#--------------------
+
+
+# 1. Multiple linear regression, no alterations, Y = Score
+
+# Note: have to use `glm()` instead of `lm()` in order to use the cross-validation function `cv.glm()` on it.
+#  (No functional difference between `lm()` and `glm()` in this instance. [See `?cv.glm()`.])
+MLM_model_1 <- glm(IGN_Score ~ Engine + SimplifiedGenre, 
+                      data = ign_wiki)
+
+# Diagnostic plots, in case you were curious:
+#par(mfrow = c(2,2))
+#plot(regr_MLM_model)
+
+# Coefficients of each variable and each level. [Note: Two levels come up as NA.]
+coef(MLM_model_1 )
+contrasts(ign_wiki$Engine)
+summary(MLM_model_1 )
+# _Observation: None are significant. Lowest p-value: .206 for Engine == "Unreal Engine".
+
+# NOTE: Cannot use `EngineVersion` in this model because of the shape of the data. See below. 
+#   (Relatively, too much data in "Unreal Engine 3" and "Unity2013".) 
+MLM_model_2 <- glm(IGN_Score ~ Engine + SimplifiedGenre + EngineVersion, 
+                      data = ign_wiki)
+summary(MLM_model_2)
+
+# Try with only the Simplified Genre.
+MLM_model_3 <- glm(IGN_Score ~ SimplifiedGenre, 
+                      data = ign_wiki)
+summary(MLM_model_3) # Most predictive: Genre being RPG, but p-value is about 30.1%. Still not very predictive.
+
+
+
+
+
+cv_MLM <- cv.glm(ign_wiki, MLM_model_1, K = 10)
+summary(cv_MLM)
+cv_MLM$delta[1] # Cross-validation error, the delta (raw) of this model: 3.038 
+# NOTE: C-V is more unreliable for smaller datasets.
+
+
+
+
+
+
+
+
+### Classification Models
+
+# 1. Logistic Regression, no alteration, Y = Score_Quarter
+LR_model_1 <- glm(IGN_Score_Quarter ~ Engine + SimplifiedGenre, 
+                       ign_wiki, 
+                       family = binomial)
+coef(LR_model_1)
+# WARNING: Cross-validation is unreliable. "glm.fit: fitted probabilities numerically 0 or 1 occurred" 
+#   -> over-inflated coefficient estimates. p-values for the model are up the wall.
+summary(LR_model_1)
+
+
+cv_LR_model_1 <- cv.glm(ign_wiki, LR_model_1, K = 5)
+cv_LR_model_1$delta[1]
+
+
+
+#class_LDA_model <- lda(Score_Quarter ~ Engine + EngineVersion + Year + SimplifiedGenre,
+#                       games)
+
+
+# GENERAL TAKEAWAY: Predicting IGN score may be easier with other models and other data. See below.
+
+
+```
+
+
+<br>
+
+
+
+
+
+### Models for `ign_sc` dataset
+
+So far, these models are competing against a k-fold cross-validation (k = 5) delta value of `cv_MLM$delta[1] = 2.963`. We can compare these to other regression models using more data, found in the `ign_sc` dataset.<br><br>
+
+Note that we _cannot_ use Metacritic score to predict IGN score, since IGN score directly contributes to Metacritic score (by definition).
+
+```{r}
+
+##### `ign_wiki` Models
+
+
+### Regression models
+
+# 1. Multiple linear regression
+
+# All reasonable variables: Publisher, Developer, all Sales variables, Rating, Platform, Genre
+# REMOVED: Not Publisher, Developer, too many factor levels; 580 and 1000+ respectively.
+
+
+MLM_model_4 <- glm(IGN_Score ~  NA_Sales + 
+                     EU_Sales + JP_Sales + Other_Sales + Global_Sales + Rating + Platform + Genre,
+                   data = ign_sc)
+#summary(MLM_model_4)
+
+cv_MLM_model_4 <- cv.glm(ign_sc, MLM_model_4, K = 10)
+cv_MLM_model_4$delta[1] # delta: 2.2844
+
+# Building off the previous model: Remove sales variables except for NASales.
+# NOTICE: Switch NA_Sales for Global_Sales, and Global_Sales has the same significance but less than twice as powerful
+#   a positive effect on IGN rating! 
+# So North America sales, according to these two models, influence rating about twice as much as global sales.
+# - Observe also: ALL the genres are statistically significant in coefficients.
+MLM_model_5 <- glm(IGN_Score ~  NA_Sales + Rating + Platform + Genre,
+                   data = ign_sc)
+#summary(MLM_model_5)
+
+cv_MLM_model_5 <- cv.glm(ign_sc, MLM_model_5, K = 10)
+
+cv_MLM_model_5$delta[1] # delta: 2.277
+
+
+
+
+
+
+# All reasonable variables, with interaction effects: 
+#     all Sales variables, Rating, Platform, Genre 
+
+
+
+
+### Classifiction models
+
+# 1. Logistic regression
+
+LR_model_2 <- glm(IGN_Score_Quarter ~ NA_Sales + Rating + Platform + Genre,
+                  data = ign_sc,
+                  family = binomial)
+#summary(LR_model_2)
+
+cv_LR_model_2 <- cv.glm(ign_sc, LR_model_2, K = 10)
+cv_LR_model_2$delta[1] # delta: 0.00727; not impressive.
+# Suffers from the same problem as the above classifier for the `ign_wiki` dataset.
+
+
+LR_model_3 <- glm(IGN_Score_Quarter ~ NA_Sales + Genre,
+                  data = ign_sc,
+                  family = binomial)
+#summary(LR_model_3)
+
+cv_LR_model_3 <- cv.glm(ign_sc, LR_model_3, K = 10)
+cv_LR_model_3$delta[1] # delta: 0.007268
+
+
+
+```
+
+<br>
+
+
+
+
+### Model comparison 
+
+According to the above analyses, for multiple linear regression, the model with the lowest "delta" value from k-fold cross-validation (k = 10) was `MLM_model_5` with `IGN_Score ~  NA_Sales + Rating + Platform + Genre` with a `delta` of 2.277. (Competitors were over 3.0 from the dataset `ign_wiki` and 2.28, also from the dataset `ign_sc`.)
+
+<br>
+
+
+### Final model implementation: `guess_IGN_score()` function
+
+Below, the error of the best-predicting model is double-checked with a Validation Set Approach test. The MSE (error) is measured as approximately 2.2984, not so different from the k-fold cross-validation 
+
+```{r}
+
+# Final check of the error rate of predicting IGN score: Validation Set Approach.
+
+set.seed(1)
+
+ign_sc_indexed <- ign_sc %>%
+  mutate(
+    index = (1:9139)
+  )
+train_data <- sample_n(ign_sc_indexed, 4569)
+training_indices <- pull(train_data, index) # Vector of indices of the training dataset.
+test_data <- ign_sc_indexed[-training_indices,]
+
+
+# Rehash of the "winning" model, `MLM_model_5`, on the training data:
+MLM_model_5_train <- glm(IGN_Score ~  NA_Sales + Rating + Platform + Genre,
+                         data = train_data)
+
+test_data <- test_data %>%
+  mutate(
+    error_MLM = IGN_Score - predict(MLM_model_5_train, test_data),
+    error_sq_MLM = error_MLM^2
+    
+  )
+
+MSE_MLM <- mean(test_data$error_sq_MLM)
+MSE_MLM # means squared error for this Validation Set Approach: 2.2984 points of IGN scoring
+
+
+
+guess_IGN_score <- function(na_sales, esrb_rating, platform, genre)
+{
+  #c(na_sales, as.factor(esrb_rating), as.factor(platform), as.factor(genre))
+  new_data <- tibble(
+    NA_Sales = na_sales,
+    Rating = esrb_rating,
+    Platform = platform,
+    Genre = genre
+  )
+  predict(MLM_model_5, newdata = new_data)
+}
+
+# Wolfenstein: The New Order on PS4 - got a 7.8 on IGN
+guess_IGN_score(0.47, "M", "PS4", "Shooter")
+# predicted: 8.058, approx. 8.1; only .3 off
+
+# Dark Souls II on X360 - got a 9.0 on IGN
+guess_IGN_score(0.48, "T", "X360", "Role-Playing")
+# predicted: 7.114, approx. 
+
+
+
+find_data <- function(title)
+{
+  data <- ign_sc %>%
+    filter(Title == title) %>%
+    select(Title, NA_Sales, Rating, Platform, Genre)
+  data
+}
+
+# find the data for Wolfenstein:
+find_data("Wolfenstein")
+
+
+```
+
+### Final notes
+
+- It would be useful to test other types of MLM models, such as applying a log() function to variables, or polynomials.
+- It would be useful, in the future, 
+- The model used in the `guess_IGN_score()` function has an estimated test error measured as (approx.) 2.277 IGN points according to k-fold cross-validation with k = 10, or an MSE of (approx.) 2.2984 IGN score points according to a validation set approach test.
+- While this function is relatively useful for determining a game's IGN score-- it does at least give a rough ballpark of what the game's score might be-- additional variables would be useful for lowering the test error.
+
+
+
+
+
+
+
+
